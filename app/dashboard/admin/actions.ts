@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { isAdminEmail } from "@/lib/admin";
 
 export async function toggleProfileActive(
@@ -17,7 +18,13 @@ export async function toggleProfileActive(
     return { error: "Not authorized" };
   }
 
-  const { error } = await supabase
+  // RLS's profiles_update_own policy only allows a user to update their
+  // own row, so activating/deactivating other users' profiles requires
+  // the service-role client to bypass RLS. This is safe here because the
+  // isAdminEmail check above has already gated access before this client
+  // is ever created.
+  const adminClient = createAdminClient();
+  const { error } = await adminClient
     .from("profiles")
     .update({ is_active: isActive })
     .eq("id", userId);
