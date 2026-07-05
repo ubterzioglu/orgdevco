@@ -1684,11 +1684,14 @@ git commit -m "feat: add public consultant and organization directories"
 **Files:**
 - Create: `app/dashboard/admin/page.tsx`
 - Create: `app/dashboard/admin/actions.ts`
+- Create: `CHANGELOG.md` (repo root)
+- Create: `lib/changelog.ts`
 - Test: `__tests__/app/admin-actions.test.ts`
+- Test: `__tests__/lib/changelog.test.ts`
 
 **Interfaces:**
 - Consumes: `isAdminEmail` from Task 2, `createClient` (server) from Task 2.
-- Produces: `toggleProfileActive(userId: string, isActive: boolean): Promise<{ error?: string }>`.
+- Produces: `toggleProfileActive(userId: string, isActive: boolean): Promise<{ error?: string }>`; `getChangelogEntries(): ChangelogEntry[]` from `lib/changelog.ts`, where `ChangelogEntry = { date: string; items: string[] }`.
 
 - [ ] **Step 1: Write failing test for the admin guard in the action**
 
@@ -1766,12 +1769,98 @@ export async function toggleProfileActive(
 Run: `npm test -- admin-actions.test.ts`
 Expected: PASS, 1 test passed.
 
-- [ ] **Step 5: Implement the admin dashboard page**
+- [ ] **Step 5: Write failing test for the changelog parser**
+
+Create `__tests__/lib/changelog.test.ts`:
+```typescript
+import { describe, it, expect, vi } from "vitest";
+
+vi.mock("node:fs", () => ({
+  readFileSync: vi.fn(
+    () => "# Changelog\n\n## 2026-07-05\n\n- First item\n- Second item\n\n## 2026-07-04\n\n- Older item\n"
+  ),
+}));
+
+import { getChangelogEntries } from "@/lib/changelog";
+
+describe("getChangelogEntries", () => {
+  it("parses dated sections into entries, newest first", () => {
+    const entries = getChangelogEntries();
+    expect(entries).toEqual([
+      { date: "2026-07-05", items: ["First item", "Second item"] },
+      { date: "2026-07-04", items: ["Older item"] },
+    ]);
+  });
+});
+```
+
+- [ ] **Step 6: Run to verify failure**
+
+Run: `npm test -- changelog.test.ts`
+Expected: FAIL — module not found.
+
+- [ ] **Step 7: Implement the changelog parser**
+
+Create `lib/changelog.ts`:
+```typescript
+import { readFileSync } from "node:fs";
+import path from "node:path";
+
+export type ChangelogEntry = {
+  date: string;
+  items: string[];
+};
+
+export function getChangelogEntries(): ChangelogEntry[] {
+  const filePath = path.join(process.cwd(), "CHANGELOG.md");
+  const raw = readFileSync(filePath, "utf-8");
+
+  const sections = raw.split(/^## /m).slice(1);
+
+  return sections.map((section) => {
+    const [dateLine, ...rest] = section.split("\n");
+    const items = rest
+      .filter((line) => line.trim().startsWith("- "))
+      .map((line) => line.trim().slice(2).trim());
+
+    return { date: dateLine.trim(), items };
+  });
+}
+```
+
+- [ ] **Step 8: Run to verify pass**
+
+Run: `npm test -- changelog.test.ts`
+Expected: PASS, 1 test passed.
+
+- [ ] **Step 9: Write today's changelog entry**
+
+Create `CHANGELOG.md` at the repo root:
+```markdown
+# Changelog
+
+## 2026-07-05
+
+- Wrote the Phase 1 design spec (landing page, Supabase auth, consultant/organization profiles, Coolify deployment).
+- Wrote the Phase 1 implementation plan (12 tasks, TDD, subagent-driven execution).
+- Found an existing `.env.local` with live Supabase credentials and revised the architecture from a fresh Prisma/Postgres stack to Supabase (Postgres + Auth), reusing those credentials.
+- Scaffolded the Next.js 15 + TypeScript + Tailwind + Vitest project.
+- Added Supabase client helpers (`lib/supabase/client.ts`, `lib/supabase/server.ts`) and the `ADMIN_EMAILS` allowlist check (`lib/admin.ts`).
+- Added the `profiles`, `consultant_profiles`, and `organization_profiles` schema with Row Level Security policies.
+- Added Zod validation schemas for signup, login, and both profile types.
+- Added signup/login pages and role-gating middleware for `/dashboard/*`.
+- Added consultant and organization dashboard profile forms.
+- Added public `/consultants` and `/organizations` directories.
+- Added the admin dashboard with profile activation controls and this changelog panel.
+```
+
+- [ ] **Step 10: Implement the admin dashboard page (profile table + changelog panel)**
 
 Create `app/dashboard/admin/page.tsx`:
 ```tsx
 import { createClient } from "@/lib/supabase/server";
 import { toggleProfileActive } from "./actions";
+import { getChangelogEntries } from "@/lib/changelog";
 
 export default async function AdminDashboardPage() {
   const supabase = await createClient();
@@ -1779,6 +1868,8 @@ export default async function AdminDashboardPage() {
     .from("profiles")
     .select("id, name, email, role, is_active")
     .order("created_at", { ascending: false });
+
+  const changelog = getChangelogEntries();
 
   return (
     <main className="mx-auto max-w-4xl px-4 py-16">
@@ -1813,25 +1904,41 @@ export default async function AdminDashboardPage() {
           ))}
         </tbody>
       </table>
+
+      <section className="mt-12">
+        <h2 className="text-xl font-semibold mb-4">Recent updates</h2>
+        {changelog.map((entry) => (
+          <div key={entry.date} className="mb-6">
+            <h3 className="text-sm font-medium text-slate-500">
+              {entry.date}
+            </h3>
+            <ul className="mt-2 list-disc pl-5 text-sm">
+              {entry.items.map((item, i) => (
+                <li key={i}>{item}</li>
+              ))}
+            </ul>
+          </div>
+        ))}
+      </section>
     </main>
   );
 }
 ```
 
-- [ ] **Step 6: Manual verification**
+- [ ] **Step 11: Manual verification**
 
-Run: `npm run dev`. Log in with an email present in `ADMIN_EMAILS` (from `.env.local`), visit `/dashboard/admin`, confirm the profile table renders and clicking "Deactivate" on a test profile flips its status and removes it from `/consultants` or `/organizations`.
+Run: `npm run dev`. Log in with an email present in `ADMIN_EMAILS` (from `.env.local`), visit `/dashboard/admin`, confirm the profile table renders, clicking "Deactivate" on a test profile flips its status and removes it from `/consultants` or `/organizations`, and the "Recent updates" section below the table lists the `CHANGELOG.md` entries grouped by date.
 
-- [ ] **Step 7: Run full automated test suite**
+- [ ] **Step 12: Run full automated test suite**
 
 Run: `npm test`
 Expected: PASS, all tests passed.
 
-- [ ] **Step 8: Commit**
+- [ ] **Step 13: Commit**
 
 ```bash
-git add app/dashboard/admin __tests__/app/admin-actions.test.ts
-git commit -m "feat: add admin dashboard for profile activation"
+git add app/dashboard/admin lib/changelog.ts CHANGELOG.md __tests__/app/admin-actions.test.ts __tests__/lib/changelog.test.ts
+git commit -m "feat: add admin dashboard with profile activation and changelog panel"
 ```
 
 ---
