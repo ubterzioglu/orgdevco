@@ -415,7 +415,192 @@ git commit -m "feat: add profiles schema and RLS policies migration"
 
 ---
 
-## Task 4: Zod validation schemas
+## Task 4: Health check endpoint
+
+**Files:**
+- Create: `app/api/health/route.ts`
+- Test: `__tests__/app/health.test.ts`
+
+**Interfaces:**
+- Produces: `GET` handler returning `{ status: "ok" }` with HTTP 200.
+
+- [ ] **Step 1: Write failing test**
+
+Create `__tests__/app/health.test.ts`:
+```typescript
+import { describe, it, expect } from "vitest";
+import { GET } from "@/app/api/health/route";
+
+describe("GET /api/health", () => {
+  it("returns status ok", async () => {
+    const response = await GET();
+    const body = await response.json();
+    expect(response.status).toBe(200);
+    expect(body).toEqual({ status: "ok" });
+  });
+});
+```
+
+- [ ] **Step 2: Run to verify failure**
+
+Run: `npm test -- health.test.ts`
+Expected: FAIL — module not found.
+
+- [ ] **Step 3: Implement the health route**
+
+Create `app/api/health/route.ts`:
+```typescript
+import { NextResponse } from "next/server";
+
+export async function GET() {
+  return NextResponse.json({ status: "ok" });
+}
+```
+
+- [ ] **Step 4: Run to verify pass**
+
+Run: `npm test -- health.test.ts`
+Expected: PASS, 1 test passed.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add app/api/health __tests__/app/health.test.ts
+git commit -m "feat: add health check endpoint for Coolify"
+```
+
+---
+
+## Task 5: Docker and Coolify deployment
+
+**Files:**
+- Create: `Dockerfile`
+- Modify: `.dockerignore` (created in Task 1 — verify it excludes `node_modules`, `.next`, `.env*.local`, `.git`)
+- Modify: `next.config.ts` (set `output: "standalone"`)
+- Create: `DEPLOY.md`
+
+**Interfaces:**
+- Produces: a Docker image that runs `node server.js` on port 3000, exposing `/api/health` (added in Task 4).
+
+- [ ] **Step 1: Enable standalone output**
+
+Modify `next.config.ts` to add `output: "standalone"` to the exported config object (read the existing file first — `create-next-app` generates a minimal `NextConfig` object to extend, not replace).
+
+- [ ] **Step 2: Write the Dockerfile**
+
+Create `Dockerfile`:
+```dockerfile
+FROM node:24-alpine AS deps
+WORKDIR /app
+COPY package.json package-lock.json ./
+RUN npm ci
+
+FROM node:24-alpine AS builder
+WORKDIR /app
+COPY --from=deps /app/node_modules ./node_modules
+COPY . .
+ENV NEXT_TELEMETRY_DISABLED=1
+RUN npm run build
+
+FROM node:24-alpine AS runner
+WORKDIR /app
+ENV NODE_ENV=production
+ENV NEXT_TELEMETRY_DISABLED=1
+
+RUN addgroup --system --gid 1001 nodejs \
+  && adduser --system --uid 1001 nextjs
+
+COPY --from=builder /app/public ./public
+COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
+COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+
+USER nextjs
+EXPOSE 3000
+ENV PORT=3000
+ENV HOSTNAME="0.0.0.0"
+
+CMD ["node", "server.js"]
+```
+
+- [ ] **Step 3: Verify .dockerignore covers secrets and build junk**
+
+Read `.dockerignore` (created in Task 1 by `create-next-app`); ensure it contains `node_modules`, `.next`, `.git`, `.env*.local`. If any are missing, add them.
+
+- [ ] **Step 4: Build the image locally**
+
+Run:
+```bash
+docker build -t orgdevco:phase1 .
+```
+Expected: build completes successfully with no errors.
+
+- [ ] **Step 5: Run the image locally with real env vars**
+
+Run (values sourced from `.env.local`, not typed into shell history or committed anywhere):
+```bash
+docker run --rm -p 3000:3000 --env-file .env.local -e ADMIN_EMAILS="$ADMIN_EMAILS" orgdevco:phase1
+```
+Then in another terminal: `curl http://localhost:3000/api/health`
+Expected: `{"status":"ok"}`. Stop the container after confirming.
+
+- [ ] **Step 6: Write Coolify deployment notes**
+
+Create `DEPLOY.md`:
+```markdown
+# Deploying OrgDev to Coolify
+
+## Prerequisites
+
+- A Coolify instance with access to this Git repository.
+- The Supabase project already provisioned (URL, anon key, service role
+  key, DB URL — see the project's `.env.local` for actual values, which
+  are never committed to this repo).
+
+## Steps
+
+1. In Coolify, create a new **Application** resource, pointing at this
+   repository and the `master` branch.
+2. Set the build pack to **Dockerfile** (Coolify auto-detects the
+   `Dockerfile` in the repo root).
+3. Set the exposed port to `3000`.
+4. Add the following environment variables in Coolify's app settings,
+   using the real values from `.env.local` (do not paste them into any
+   file in this repo):
+   - `NEXT_PUBLIC_SUPABASE_URL`
+   - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+   - `SUPABASE_SERVICE_ROLE_KEY`
+   - `ADMIN_EMAILS`
+   - `NEXT_PUBLIC_SITE_URL` (added in Task 12 — the deployed site's public
+     URL, e.g. `https://orgdev.co`, used for SEO metadata and sitemap
+     generation)
+5. Set the health check path to `/api/health`.
+6. Deploy. Coolify builds the Dockerfile and starts the container on the
+   configured port.
+
+## Database migrations
+
+Schema changes live in `supabase/migrations/`. Apply them to the linked
+Supabase project with:
+
+```bash
+npx supabase db push
+```
+
+This is a manual step run from a developer machine (or a CI step with the
+Supabase access token as a secret) — Coolify does not run migrations
+automatically in this phase.
+```
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add Dockerfile .dockerignore next.config.ts DEPLOY.md
+git commit -m "feat: add Docker build and Coolify deployment docs"
+```
+
+---
+
+## Task 6: Zod validation schemas
 
 **Files:**
 - Create: `lib/validation/auth.ts`
@@ -661,7 +846,7 @@ git commit -m "feat: add Zod validation schemas for auth and profiles"
 
 ---
 
-## Task 5: Signup, login, and route-gating middleware
+## Task 7: Signup, login, and route-gating middleware
 
 **Files:**
 - Create: `app/signup/page.tsx`
@@ -672,7 +857,7 @@ git commit -m "feat: add Zod validation schemas for auth and profiles"
 - Test: `__tests__/app/signup-actions.test.ts` (schema-validation branch only; live Supabase calls are exercised manually per Step 8, since a real project has no safe way to unit-test signup without hitting the network)
 
 **Interfaces:**
-- Consumes: `signupSchema`, `loginSchema` from Task 4; `createClient` (server) from Task 2; `isAdminEmail` from Task 2.
+- Consumes: `signupSchema`, `loginSchema` from Task 6; `createClient` (server) from Task 2; `isAdminEmail` from Task 2.
 - Produces: `signup(formData: FormData): Promise<{ error?: string }>` from `app/signup/actions.ts`; `login(formData: FormData): Promise<{ error?: string }>` from `app/login/actions.ts`. Both redirect on success instead of returning.
 
 - [ ] **Step 1: Write the failing test for signup action validation**
@@ -989,7 +1174,7 @@ export const config = {
 
 - [ ] **Step 8: Manual verification against the real Supabase project**
 
-Run: `npm run dev`, then in a browser: visit `/signup`, create a Consultant account, confirm redirect to `/dashboard/consultant` (expect a 404 for now — the page doesn't exist until Task 6 — that 404, not a `/403` or `/login` redirect, confirms middleware let an authenticated Consultant through). Then log out, visit `/dashboard/admin` unauthenticated, confirm redirect to `/login`.
+Run: `npm run dev`, then in a browser: visit `/signup`, create a Consultant account, confirm redirect to `/dashboard/consultant` (expect a 404 for now — the page doesn't exist until Task 8 — that 404, not a `/403` or `/login` redirect, confirms middleware let an authenticated Consultant through). Then log out, visit `/dashboard/admin` unauthenticated, confirm redirect to `/login`.
 
 - [ ] **Step 9: Run full automated test suite**
 
@@ -1005,7 +1190,7 @@ git commit -m "feat: add signup/login and role-gating middleware"
 
 ---
 
-## Task 6: Dashboard profile forms (Consultant, Organization)
+## Task 8: Dashboard profile forms (Consultant, Organization)
 
 **Files:**
 - Create: `app/dashboard/consultant/page.tsx`
@@ -1017,7 +1202,7 @@ git commit -m "feat: add signup/login and role-gating middleware"
 - Test: `__tests__/app/organization-actions.test.ts`
 
 **Interfaces:**
-- Consumes: `consultantProfileSchema`, `organizationProfileSchema` from Task 4; `createClient` (server) from Task 2.
+- Consumes: `consultantProfileSchema`, `organizationProfileSchema` from Task 6; `createClient` (server) from Task 2.
 - Produces: `validateConsultantProfileForm(formData: FormData)`, `saveConsultantProfile(formData: FormData): Promise<{ error?: string }>`, and the organization equivalents.
 
 - [ ] **Step 1: Write failing test for consultant profile validation**
@@ -1436,7 +1621,7 @@ git commit -m "feat: add consultant and organization dashboard profile forms"
 
 ---
 
-## Task 7: Public directories (consultants, organizations) and shared cards
+## Task 9: Public directories (consultants, organizations) and shared cards
 
 **Files:**
 - Create: `components/profile/ConsultantCard.tsx`
@@ -1663,7 +1848,7 @@ export default async function OrganizationsPage() {
 
 - [ ] **Step 11: Manual verification**
 
-Run: `npm run dev`, visit `/consultants` and `/organizations`. Confirm the profiles saved in Task 6 appear as cards.
+Run: `npm run dev`, visit `/consultants` and `/organizations`. Confirm the profiles saved in Task 8 appear as cards.
 
 - [ ] **Step 12: Run full automated test suite**
 
@@ -1679,7 +1864,7 @@ git commit -m "feat: add public consultant and organization directories"
 
 ---
 
-## Task 8: Admin dashboard
+## Task 10: Admin dashboard
 
 **Files:**
 - Create: `app/dashboard/admin/page.tsx`
@@ -1842,11 +2027,12 @@ Create `CHANGELOG.md` at the repo root:
 ## 2026-07-05
 
 - Wrote the Phase 1 design spec (landing page, Supabase auth, consultant/organization profiles, Coolify deployment).
-- Wrote the Phase 1 implementation plan (12 tasks, TDD, subagent-driven execution).
+- Wrote the Phase 1 implementation plan (13 tasks, TDD, subagent-driven execution).
 - Found an existing `.env.local` with live Supabase credentials and revised the architecture from a fresh Prisma/Postgres stack to Supabase (Postgres + Auth), reusing those credentials.
 - Scaffolded the Next.js 15 + TypeScript + Tailwind + Vitest project.
 - Added Supabase client helpers (`lib/supabase/client.ts`, `lib/supabase/server.ts`) and the `ADMIN_EMAILS` allowlist check (`lib/admin.ts`).
 - Added the `profiles`, `consultant_profiles`, and `organization_profiles` schema with Row Level Security policies.
+- Added the health check endpoint and the Docker/Coolify deployment setup.
 - Added Zod validation schemas for signup, login, and both profile types.
 - Added signup/login pages and role-gating middleware for `/dashboard/*`.
 - Added consultant and organization dashboard profile forms.
@@ -1943,7 +2129,7 @@ git commit -m "feat: add admin dashboard with profile activation and changelog p
 
 ---
 
-## Task 9: Landing page
+## Task 11: Landing page
 
 **Files:**
 - Modify: `app/page.tsx`
@@ -2071,154 +2257,337 @@ git commit -m "feat: build OrgDev landing page"
 
 ---
 
-## Task 10: Health check endpoint
+## Task 12: SEO and GEO optimization
 
 **Files:**
-- Create: `app/api/health/route.ts`
-- Test: `__tests__/app/health.test.ts`
+- Modify: `app/layout.tsx` (root Metadata API config: title template, description, Open Graph, Twitter card, JSON-LD injection)
+- Modify: `app/page.tsx` (page-specific metadata export + JSON-LD structured data)
+- Modify: `app/consultants/page.tsx` (page-specific metadata export)
+- Modify: `app/organizations/page.tsx` (page-specific metadata export)
+- Create: `app/sitemap.ts`
+- Create: `app/robots.ts`
+- Create: `public/llms.txt`
+- Modify: `.env.example` (document `NEXT_PUBLIC_SITE_URL`)
+- Modify: `DEPLOY.md` (document setting `NEXT_PUBLIC_SITE_URL` in Coolify)
+- Test: `__tests__/app/sitemap.test.ts`
+- Test: `__tests__/app/robots.test.ts`
 
 **Interfaces:**
-- Produces: `GET` handler returning `{ status: "ok" }` with HTTP 200.
+- Consumes: `process.env.NEXT_PUBLIC_SITE_URL` (new env var documented in this task).
+- Produces: `sitemap(): MetadataRoute.Sitemap` (default export) from `app/sitemap.ts`; `robots(): MetadataRoute.Robots` (default export) from `app/robots.ts`; a root `metadata: Metadata` export from `app/layout.tsx`; per-page `metadata: Metadata` exports from `app/page.tsx`, `app/consultants/page.tsx`, `app/organizations/page.tsx`; a static `public/llms.txt` file served at `/llms.txt`.
 
-- [ ] **Step 1: Write failing test**
+This task is mostly static metadata/config rather than CRUD business logic, so — following the same pattern used in Task 11 (Landing page), which shipped without new automated tests and relied on manual verification for pure JSX/layout changes — only the two file-generating routes (`sitemap.ts`, `robots.ts`) get automated tests, since they export plain data structures that are cheap and meaningful to assert on. The metadata objects and JSON-LD markup are verified manually in Step 9, the same way Task 11's landing page markup was.
 
-Create `__tests__/app/health.test.ts`:
+- [ ] **Step 1: Document the site URL env var**
+
+Modify `.env.example` to add the new variable (no real value — same convention as every other var in this file):
+```
+NEXT_PUBLIC_SUPABASE_URL=
+NEXT_PUBLIC_SUPABASE_ANON_KEY=
+SUPABASE_SERVICE_ROLE_KEY=
+ADMIN_EMAILS=
+NEXT_PUBLIC_SITE_URL=
+```
+
+- [ ] **Step 2: Write failing test for the sitemap**
+
+Create `__tests__/app/sitemap.test.ts`:
 ```typescript
-import { describe, it, expect } from "vitest";
-import { GET } from "@/app/api/health/route";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
 
-describe("GET /api/health", () => {
-  it("returns status ok", async () => {
-    const response = await GET();
-    const body = await response.json();
-    expect(response.status).toBe(200);
-    expect(body).toEqual({ status: "ok" });
+describe("sitemap", () => {
+  const original = process.env.NEXT_PUBLIC_SITE_URL;
+
+  beforeEach(() => {
+    process.env.NEXT_PUBLIC_SITE_URL = "https://orgdev.co";
+  });
+
+  afterEach(() => {
+    process.env.NEXT_PUBLIC_SITE_URL = original;
+  });
+
+  it("lists all public routes with the configured site URL as base", async () => {
+    const { default: sitemap } = await import("@/app/sitemap");
+    const entries = sitemap();
+    const urls = entries.map((entry) => entry.url);
+
+    expect(urls).toEqual([
+      "https://orgdev.co",
+      "https://orgdev.co/consultants",
+      "https://orgdev.co/organizations",
+      "https://orgdev.co/login",
+      "https://orgdev.co/signup",
+    ]);
   });
 });
 ```
 
-- [ ] **Step 2: Run to verify failure**
+- [ ] **Step 3: Run to verify failure**
 
-Run: `npm test -- health.test.ts`
+Run: `npm test -- sitemap.test.ts`
 Expected: FAIL — module not found.
 
-- [ ] **Step 3: Implement the health route**
+- [ ] **Step 4: Implement the sitemap**
 
-Create `app/api/health/route.ts`:
+Create `app/sitemap.ts`:
 ```typescript
-import { NextResponse } from "next/server";
+import type { MetadataRoute } from "next";
 
-export async function GET() {
-  return NextResponse.json({ status: "ok" });
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
+
+const PUBLIC_ROUTES = ["", "/consultants", "/organizations", "/login", "/signup"];
+
+export default function sitemap(): MetadataRoute.Sitemap {
+  return PUBLIC_ROUTES.map((route) => ({
+    url: `${SITE_URL}${route}`,
+    lastModified: new Date(),
+  }));
 }
 ```
 
-- [ ] **Step 4: Run to verify pass**
+- [ ] **Step 5: Run to verify pass**
 
-Run: `npm test -- health.test.ts`
+Run: `npm test -- sitemap.test.ts`
 Expected: PASS, 1 test passed.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 6: Write failing test for robots.ts, then implement it**
 
-```bash
-git add app/api/health __tests__/app/health.test.ts
-git commit -m "feat: add health check endpoint for Coolify"
+Create `__tests__/app/robots.test.ts`:
+```typescript
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
+
+describe("robots", () => {
+  const original = process.env.NEXT_PUBLIC_SITE_URL;
+
+  beforeEach(() => {
+    process.env.NEXT_PUBLIC_SITE_URL = "https://orgdev.co";
+  });
+
+  afterEach(() => {
+    process.env.NEXT_PUBLIC_SITE_URL = original;
+  });
+
+  it("allows public routes and disallows dashboard and api routes", async () => {
+    const { default: robots } = await import("@/app/robots");
+    const result = robots();
+
+    expect(result.rules).toEqual({
+      userAgent: "*",
+      allow: "/",
+      disallow: ["/dashboard/", "/api/"],
+    });
+    expect(result.sitemap).toBe("https://orgdev.co/sitemap.xml");
+  });
+});
 ```
 
----
+Run: `npm test -- robots.test.ts`
+Expected: FAIL — module not found.
 
-## Task 11: Docker and Coolify deployment
+Create `app/robots.ts`:
+```typescript
+import type { MetadataRoute } from "next";
 
-**Files:**
-- Create: `Dockerfile`
-- Modify: `.dockerignore` (created in Task 1 — verify it excludes `node_modules`, `.next`, `.env*.local`, `.git`)
-- Modify: `next.config.ts` (set `output: "standalone"`)
-- Create: `DEPLOY.md`
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
 
-**Interfaces:**
-- Produces: a Docker image that runs `node server.js` on port 3000, exposing `/api/health`.
-
-- [ ] **Step 1: Enable standalone output**
-
-Modify `next.config.ts` to add `output: "standalone"` to the exported config object (read the existing file first — `create-next-app` generates a minimal `NextConfig` object to extend, not replace).
-
-- [ ] **Step 2: Write the Dockerfile**
-
-Create `Dockerfile`:
-```dockerfile
-FROM node:24-alpine AS deps
-WORKDIR /app
-COPY package.json package-lock.json ./
-RUN npm ci
-
-FROM node:24-alpine AS builder
-WORKDIR /app
-COPY --from=deps /app/node_modules ./node_modules
-COPY . .
-ENV NEXT_TELEMETRY_DISABLED=1
-RUN npm run build
-
-FROM node:24-alpine AS runner
-WORKDIR /app
-ENV NODE_ENV=production
-ENV NEXT_TELEMETRY_DISABLED=1
-
-RUN addgroup --system --gid 1001 nodejs \
-  && adduser --system --uid 1001 nextjs
-
-COPY --from=builder /app/public ./public
-COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
-COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
-
-USER nextjs
-EXPOSE 3000
-ENV PORT=3000
-ENV HOSTNAME="0.0.0.0"
-
-CMD ["node", "server.js"]
+export default function robots(): MetadataRoute.Robots {
+  return {
+    rules: {
+      userAgent: "*",
+      allow: "/",
+      disallow: ["/dashboard/", "/api/"],
+    },
+    sitemap: `${SITE_URL}/sitemap.xml`,
+  };
+}
 ```
 
-- [ ] **Step 3: Verify .dockerignore covers secrets and build junk**
+Run: `npm test -- robots.test.ts`
+Expected: PASS, 2 tests passed.
 
-Read `.dockerignore` (created in Task 1 by `create-next-app`); ensure it contains `node_modules`, `.next`, `.git`, `.env*.local`. If any are missing, add them.
+- [ ] **Step 7: Set root metadata, Open Graph, and Twitter card in the layout**
 
-- [ ] **Step 4: Build the image locally**
+Modify `app/layout.tsx`: read the current file first (it has the `NavBar` import and font setup added in Task 11), then add a `Metadata` export above the default export, importing the `Metadata` type from `next`:
+```tsx
+import type { Metadata } from "next";
 
-Run:
-```bash
-docker build -t orgdevco:phase1 .
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
+
+export const metadata: Metadata = {
+  metadataBase: new URL(SITE_URL),
+  title: {
+    template: "%s | OrgDev",
+    default: "OrgDev | Organizational & Career Development Platform",
+  },
+  description:
+    "OrgDev connects organizations with vetted coaches and consultants worldwide, backed by intelligent matching.",
+  openGraph: {
+    title: "OrgDev | Organizational & Career Development Platform",
+    description:
+      "OrgDev connects organizations with vetted coaches and consultants worldwide, backed by intelligent matching.",
+    type: "website",
+    locale: "en_US",
+    siteName: "OrgDev",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "OrgDev | Organizational & Career Development Platform",
+    description:
+      "OrgDev connects organizations with vetted coaches and consultants worldwide, backed by intelligent matching.",
+  },
+};
 ```
-Expected: build completes successfully with no errors.
+Do not remove the existing font/className setup or the `<NavBar />` element added in Task 11 — only add the `metadata` export and its `SITE_URL` constant alongside them.
 
-- [ ] **Step 5: Run the image locally with real env vars**
+- [ ] **Step 8: Add page-specific metadata to the landing page, and JSON-LD Organization schema**
 
-Run (values sourced from `.env.local`, not typed into shell history or committed anywhere):
-```bash
-docker run --rm -p 3000:3000 --env-file .env.local -e ADMIN_EMAILS="$ADMIN_EMAILS" orgdevco:phase1
+Modify `app/page.tsx`: read the current file first (it has the landing page JSX added in Task 11), then add a page-level `metadata` export and a JSON-LD `<script>` tag rendered by the server component:
+```tsx
+import Link from "next/link";
+import type { Metadata } from "next";
+
+export const metadata: Metadata = {
+  title: "Home",
+  description:
+    "Connecting organizations with vetted coaches and consultants worldwide, backed by intelligent matching.",
+};
+
+const organizationJsonLd = {
+  "@context": "https://schema.org",
+  "@type": "Organization",
+  name: "OrgDev",
+  url: process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000",
+  description:
+    "OrgDev is an organizational and career development platform connecting organizations with vetted coaches and consultants.",
+};
+
+export default function HomePage() {
+  return (
+    <main>
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(organizationJsonLd) }}
+      />
+      <section className="mx-auto max-w-5xl px-4 py-24 text-center">
+        <h1 className="text-4xl font-bold tracking-tight">
+          OrgDev — the AI-powered organizational and career development
+          platform
+        </h1>
+        <p className="mx-auto mt-4 max-w-2xl text-slate-600">
+          Connecting organizations with vetted coaches and consultants
+          worldwide, backed by intelligent matching.
+        </p>
+        <div className="mt-8 flex justify-center gap-4">
+          <Link
+            href="/signup"
+            className="rounded bg-slate-900 px-6 py-3 text-white"
+          >
+            Get started
+          </Link>
+          <Link href="/consultants" className="rounded border px-6 py-3">
+            Browse consultants
+          </Link>
+        </div>
+      </section>
+
+      <section className="mx-auto grid max-w-5xl gap-8 px-4 py-16 sm:grid-cols-2">
+        <div className="rounded-lg border p-6">
+          <h2 className="text-xl font-semibold">For Consultants & Coaches</h2>
+          <p className="mt-2 text-sm text-slate-600">
+            Build your profile, offer one-on-one sessions, and reach
+            organizations looking for your expertise.
+          </p>
+        </div>
+        <div className="rounded-lg border p-6">
+          <h2 className="text-xl font-semibold">For Organizations</h2>
+          <p className="mt-2 text-sm text-slate-600">
+            Post your development needs — from leadership training to
+            cultural change — and get matched with the right expertise.
+          </p>
+        </div>
+      </section>
+
+      <section className="mx-auto max-w-5xl px-4 py-16">
+        <div className="rounded-lg border-2 border-dashed p-8 text-center">
+          <h2 className="text-xl font-semibold">
+            Coming soon: your AI Digital Twin
+          </h2>
+          <p className="mx-auto mt-2 max-w-xl text-sm text-slate-600">
+            A future release will let consultants activate an AI assistant
+            that understands their methods and style, available to clients
+            around the clock.
+          </p>
+        </div>
+      </section>
+    </main>
+  );
+}
 ```
-Then in another terminal: `curl http://localhost:3000/api/health`
-Expected: `{"status":"ok"}`. Stop the container after confirming.
 
-- [ ] **Step 6: Write Coolify deployment notes**
+- [ ] **Step 9: Add page-specific metadata to the consultants and organizations directories**
 
-Create `DEPLOY.md`:
+Modify `app/consultants/page.tsx` (created in Task 9): read the current file first, then add a `metadata` export above the default export without changing any existing JSX or data-fetching logic:
+```tsx
+import type { Metadata } from "next";
+
+export const metadata: Metadata = {
+  title: "Consultants & Coaches",
+  description:
+    "Browse vetted consultants and coaches available on OrgDev, searchable by expertise, language, and location.",
+};
+```
+
+Modify `app/organizations/page.tsx` (created in Task 9): read the current file first, then add the equivalent export:
+```tsx
+import type { Metadata } from "next";
+
+export const metadata: Metadata = {
+  title: "Organizations",
+  description:
+    "Browse organizations on OrgDev seeking coaching and consulting expertise for leadership and culture development.",
+};
+```
+
+- [ ] **Step 10: Write public/llms.txt for AI crawlers and answer engines**
+
+Create `public/llms.txt`:
+```
+# OrgDev
+
+> OrgDev is an organizational and career development platform that connects
+> organizations with vetted coaches and consultants. Organizations post
+> development needs (leadership training, cultural change, coaching);
+> consultants and coaches maintain public profiles describing their
+> expertise, languages, and location. OrgDev is not a payments or matching
+> engine in this phase — it is a directory and profile platform with
+> Supabase-backed authentication for Consultant, Organization, and Admin
+> roles.
+
+## Main sections
+
+- [Consultants & Coaches directory](/consultants): public list of vetted
+  consultants and coaches, with title, bio, areas of expertise, languages,
+  and location for each.
+- [Organizations directory](/organizations): public list of organizations
+  using OrgDev, with industry, description, and location for each.
+- [Sign up](/signup): create a Consultant or Organization account.
+- [Log in](/login): existing account sign-in.
+
+## Notes for AI assistants and answer engines
+
+- OrgDev does not currently support OAuth login — only email/password via
+  Supabase Auth.
+- Consultant and Organization profiles shown in the public directories are
+  self-reported by the account holder and are only visible once the
+  account is marked active.
+- For up-to-date structured data about OrgDev itself, see the JSON-LD
+  `Organization` schema embedded on the homepage (/).
+```
+
+- [ ] **Step 11: Document NEXT_PUBLIC_SITE_URL in the Coolify deployment guide**
+
+Modify `DEPLOY.md` (created in Task 5): read the current file first, then add `NEXT_PUBLIC_SITE_URL` to the bulleted list of environment variables in the "Steps" section (step 4) so it reads:
 ```markdown
-# Deploying OrgDev to Coolify
-
-## Prerequisites
-
-- A Coolify instance with access to this Git repository.
-- The Supabase project already provisioned (URL, anon key, service role
-  key, DB URL — see the project's `.env.local` for actual values, which
-  are never committed to this repo).
-
-## Steps
-
-1. In Coolify, create a new **Application** resource, pointing at this
-   repository and the `master` branch.
-2. Set the build pack to **Dockerfile** (Coolify auto-detects the
-   `Dockerfile` in the repo root).
-3. Set the exposed port to `3000`.
 4. Add the following environment variables in Coolify's app settings,
    using the real values from `.env.local` (do not paste them into any
    file in this repo):
@@ -2226,34 +2595,36 @@ Create `DEPLOY.md`:
    - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
    - `SUPABASE_SERVICE_ROLE_KEY`
    - `ADMIN_EMAILS`
-5. Set the health check path to `/api/health`.
-6. Deploy. Coolify builds the Dockerfile and starts the container on the
-   configured port.
+   - `NEXT_PUBLIC_SITE_URL` — the deployed site's public URL (e.g.
+     `https://orgdev.co`), used for SEO metadata, the sitemap, and
+     robots.txt generation (added in Task 12).
+```
+Note: Task 5's own steps already add this exact bullet to `DEPLOY.md` when executed in order, so if it's already present, treat this step as a verification that it's there rather than adding a duplicate line.
 
-## Database migrations
+- [ ] **Step 12: Manual verification**
 
-Schema changes live in `supabase/migrations/`. Apply them to the linked
-Supabase project with:
+Run: `npm run dev`, then:
+- Visit `/`, view page source, confirm a `<script type="application/ld+json">` tag containing the `Organization` schema is present, and confirm the `<title>` reads "Home | OrgDev".
+- Visit `/consultants` and `/organizations`, confirm their `<title>` tags read "Consultants & Coaches | OrgDev" and "Organizations | OrgDev" respectively.
+- Visit `/sitemap.xml`, confirm it lists all five public routes.
+- Visit `/robots.txt`, confirm it allows `/` and disallows `/dashboard/` and `/api/`.
+- Visit `/llms.txt`, confirm the plain-text file loads and describes OrgDev with links to `/consultants` and `/organizations`.
+
+- [ ] **Step 13: Run full automated test suite**
+
+Run: `npm test`
+Expected: PASS, all tests passed.
+
+- [ ] **Step 14: Commit**
 
 ```bash
-npx supabase db push
-```
-
-This is a manual step run from a developer machine (or a CI step with the
-Supabase access token as a secret) — Coolify does not run migrations
-automatically in this phase.
-```
-
-- [ ] **Step 7: Commit**
-
-```bash
-git add Dockerfile .dockerignore next.config.ts DEPLOY.md
-git commit -m "feat: add Docker build and Coolify deployment docs"
+git add app/layout.tsx app/page.tsx app/consultants/page.tsx app/organizations/page.tsx app/sitemap.ts app/robots.ts public/llms.txt .env.example DEPLOY.md __tests__/app/sitemap.test.ts __tests__/app/robots.test.ts
+git commit -m "feat: add SEO metadata, sitemap/robots, and GEO structured data + llms.txt"
 ```
 
 ---
 
-## Task 12: Push to GitHub
+## Task 13: Push to GitHub
 
 **Files:** none (git operations only)
 
@@ -2266,7 +2637,7 @@ Run:
 git log --oneline
 git remote -v
 ```
-Expected: shows all commits from Tasks 1–11 in order; if no remote is configured yet, add one:
+Expected: shows all commits from Tasks 1–12 in order; if no remote is configured yet, add one:
 ```bash
 git remote add origin https://github.com/ubterzioglu/orgdevco.git
 ```
@@ -2296,6 +2667,8 @@ Expected: the repository's default branch and commit list match local `git log`.
 
 ## Self-Review Notes
 
-- **Spec coverage:** landing page (Task 9), Supabase auth (Task 5), consultant/organization CRUD (Tasks 4, 6, 7), admin view (Task 8), Coolify Docker deployment (Task 11), health check (Task 10) — all present. RLS and data model (Task 3) covered. `.env.local` never modified — enforced explicitly in Tasks 2, 11, and 12.
-- **Type consistency:** `consultantProfileSchema`/`organizationProfileSchema` field names (Task 4) match the form field names read in Task 6's actions and the columns in Task 3's migration (`photo_url`/`photoUrl` mapped explicitly in the upsert calls since Postgres uses snake_case and the schema uses camelCase — this is intentional, not a bug, since Supabase column names are snake_case by convention).
+- **Spec coverage:** landing page (Task 11), Supabase auth (Task 7), consultant/organization CRUD (Tasks 6, 8, 9), admin view (Task 10), Coolify Docker deployment (Task 5), health check (Task 4), SEO/GEO optimization — metadata, sitemap, robots.txt, JSON-LD, llms.txt (Task 12) — all present. RLS and data model (Task 3) covered. `.env.local` never modified — enforced explicitly in Tasks 2, 5, 12, and 13.
+- **Task order rationale:** Docker/Coolify deployment (Task 5) was moved immediately after the schema migration (Task 3) so the deployment pipeline is proven early. Health check (Task 4) was moved to sit directly before Docker (Task 5) because Task 5's own local-image verification step curls `/api/health` — the endpoint must exist before the Dockerfile step that exercises it.
+- **Type consistency:** `consultantProfileSchema`/`organizationProfileSchema` field names (Task 6) match the form field names read in Task 8's actions and the columns in Task 3's migration (`photo_url`/`photoUrl` mapped explicitly in the upsert calls since Postgres uses snake_case and the schema uses camelCase — this is intentional, not a bug, since Supabase column names are snake_case by convention).
+- **SEO/GEO task (Task 12) coverage:** confirmed to cover root and per-page Metadata API usage (title template, description, Open Graph, Twitter card), `app/sitemap.ts` and `app/robots.ts` via Next.js's built-in `MetadataRoute` types, JSON-LD `Organization` structured data on the landing page for AI-answer-engine consumption, and a hand-written `public/llms.txt` with real OrgDev-specific content and links. `NEXT_PUBLIC_SITE_URL` is documented in `.env.example` (Task 12) and referenced in `DEPLOY.md`'s Coolify environment variable list (added in Task 5, cross-checked in Task 12 Step 11 so nothing is left dangling regardless of execution order).
 - **No placeholders:** every step has literal code or an exact command with expected output.
