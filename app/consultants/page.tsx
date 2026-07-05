@@ -1,5 +1,12 @@
+import type { Metadata } from "next";
 import { createClient } from "@/lib/supabase/server";
 import ConsultantCard from "@/components/profile/ConsultantCard";
+
+export const metadata: Metadata = {
+  title: "Consultants & Coaches",
+  description:
+    "Browse vetted consultants and coaches available on OrgDev, searchable by expertise, language, and location.",
+};
 
 export default async function ConsultantsPage() {
   const supabase = await createClient();

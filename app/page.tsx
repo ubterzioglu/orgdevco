@@ -1,8 +1,32 @@
 import Link from "next/link";
+import type { Metadata } from "next";
+
+export const metadata: Metadata = {
+  // `title.template` from the root layout only applies to child route
+  // segments, not to a page.tsx in the same segment as the layout, so the
+  // full title is spelled out here explicitly.
+  // https://nextjs.org/docs/app/api-reference/functions/generate-metadata#template
+  title: "Home | OrgDev",
+  description:
+    "Connecting organizations with vetted coaches and consultants worldwide, backed by intelligent matching.",
+};
+
+const organizationJsonLd = {
+  "@context": "https://schema.org",
+  "@type": "Organization",
+  name: "OrgDev",
+  url: process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000",
+  description:
+    "OrgDev is an organizational and career development platform connecting organizations with vetted coaches and consultants.",
+};
 
 export default function HomePage() {
   return (
     <main>
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(organizationJsonLd) }}
+      />
       <section className="mx-auto max-w-5xl px-4 py-24 text-center">
         <h1 className="text-4xl font-bold tracking-tight">
           OrgDev — the AI-powered organizational and career development

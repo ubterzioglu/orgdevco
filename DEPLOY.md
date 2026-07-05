@@ -21,6 +21,9 @@
    - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
    - `SUPABASE_SERVICE_ROLE_KEY`
    - `ADMIN_EMAILS`
+   - `NEXT_PUBLIC_SITE_URL` — the deployed site's public URL (e.g.
+     `https://orgdev.co`), used for SEO metadata, the sitemap, and
+     robots.txt generation (added in Task 12).
 5. Set the health check path to `/api/health`.
 6. Deploy. Coolify builds the Dockerfile and starts the container on the
    configured port.

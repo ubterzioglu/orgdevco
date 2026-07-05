@@ -1,0 +1,30 @@
+# OrgDev
+
+> OrgDev is an organizational and career development platform that connects
+> organizations with vetted coaches and consultants. Organizations post
+> development needs (leadership training, cultural change, coaching);
+> consultants and coaches maintain public profiles describing their
+> expertise, languages, and location. OrgDev is not a payments or matching
+> engine in this phase — it is a directory and profile platform with
+> Supabase-backed authentication for Consultant, Organization, and Admin
+> roles.
+
+## Main sections
+
+- [Consultants & Coaches directory](/consultants): public list of vetted
+  consultants and coaches, with title, bio, areas of expertise, languages,
+  and location for each.
+- [Organizations directory](/organizations): public list of organizations
+  using OrgDev, with industry, description, and location for each.
+- [Sign up](/signup): create a Consultant or Organization account.
+- [Log in](/login): existing account sign-in.
+
+## Notes for AI assistants and answer engines
+
+- OrgDev does not currently support OAuth login — only email/password via
+  Supabase Auth.
+- Consultant and Organization profiles shown in the public directories are
+  self-reported by the account holder and are only visible once the
+  account is marked active.
+- For up-to-date structured data about OrgDev itself, see the JSON-LD
+  `Organization` schema embedded on the homepage (/).

@@ -1,5 +1,12 @@
+import type { Metadata } from "next";
 import { createClient } from "@/lib/supabase/server";
 import OrganizationCard from "@/components/profile/OrganizationCard";
+
+export const metadata: Metadata = {
+  title: "Organizations",
+  description:
+    "Browse organizations on OrgDev seeking coaching and consulting expertise for leadership and culture development.",
+};
 
 export default async function OrganizationsPage() {
   const supabase = await createClient();
