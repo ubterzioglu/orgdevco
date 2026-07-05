@@ -31,3 +31,6 @@ next-env.d.ts
 
 # OMC internal state (not part of the app)
 .omc/
+
+# Claude Code harness session state (not part of the app)
+.claude/
